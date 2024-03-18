@@ -140,13 +140,13 @@ def edge_weight():
     '''
         Generate a weight for a payment graph edge.
     '''
-    # return random.randint(-1_000_000_000, 1_000_000_000)
+    return random.randint(-1_000_000_000, 1_000_000_000)
 
-    '''
-        Used fixed weight = 1 for each edge, so that it treats all transactions equally and focuses on
-        minimizing the number of transactions to settle the graph. 
-    '''
-    return 1
+    # '''
+    #     Used fixed weight = 1 for each edge, so that it treats all transactions equally and focuses on
+    #     minimizing the number of transactions to settle the graph. 
+    # '''
+    # return 1
 
 
 def find_settlement_or(cashouts, _):
