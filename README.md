@@ -4,6 +4,8 @@ Finds an optimal settlement from a list of cashouts from pokernow. Player name t
 
 This tool identifies the most efficient settlement strategy for a series of cashouts recorded in PokerNow, it is used internally in a small poker group.
 
+The script outputs will be available in the ./output/ directory. 
+
 ### Steps:
 1. If applicable, download all ledgers from pokernow based on game ids automatically
 2. Read all ledgers, generate player cashout summary based on payment info
