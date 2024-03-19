@@ -181,7 +181,6 @@ def edge_weight():
     '''
     return random.randint(-1_000_000_000, 1_000_000_000)
 
-
 def find_settlement_or(cashouts, _):
     '''Finds a feasible settlement in a payment graph using OR-tools library.'''
     from ortools.graph.python import min_cost_flow
