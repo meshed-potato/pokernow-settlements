@@ -11,10 +11,12 @@ Example Usage:
 import argparse
 import collections
 import csv
+import datetime
 import functools
 import math
 import multiprocessing
 import os
+import pandas as pd
 import random
 import requests
 import sys
@@ -24,12 +26,45 @@ from glob import glob
 TMP_LEDGERS_DIR = "./data/tmp_ledgers/"
 # This input file should have POKERNOW_NICKNAME_COL and PAYMENT_COL columns.
 INPUT_PAYMENT_INFO_FILE = "./payment_info.csv"
-OUTPUT_SETTLEMENT_FILE = "./output/settlement.html"
+
+OUTPUT_DIR = "./output/"
+OUTPUT_SETTLEMENT_FILE = f"{OUTPUT_DIR}settlement.html"
 
 POKERNOW_NICKNAME_COL = 'PN/ClubGG Alias'
 PAYMENT_COL = 'Venmo / other'
 
 random.seed(123)
+
+
+def combine_and_save_ledgers(source_dir, output_dir):
+    """
+    Combines all CSV files in the source directory into a single DataFrame and saves it
+    in the output directory with a YYYYMMDD suffix.
+
+    :param source_dir: Directory where the individual ledger CSV files are stored.
+    :param output_dir: Directory where the combined CSV file will be saved.
+    """
+    # Ensure the output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Combine all downloaded ledgers
+    all_ledgers = pd.DataFrame()
+    for csv_file in glob(os.path.join(source_dir, '*.csv')):
+        df = pd.read_csv(csv_file)
+        all_ledgers = pd.concat([all_ledgers, df], ignore_index=True)
+
+    # Get current date in YYYYMMDD format for the filename
+    today_str = datetime.datetime.now().strftime('%Y%m%d')
+    combined_file_path = os.path.join(output_dir, f'downloaded_ledgers_{today_str}.csv')
+    
+    try:
+        all_ledgers.to_csv(combined_file_path, index=False)
+        print(f"\nCombined ledger saved to {combined_file_path}")
+    except Exception as e:
+        print(f"\nError saving combined ledger: {e}.")
+        return False
+
+    return True
 
 def download_ledgers(game_ids, ledger_dir):
     """
@@ -44,7 +79,7 @@ def download_ledgers(game_ids, ledger_dir):
         return False
     # Ensure the directory exists
     os.makedirs(ledger_dir, exist_ok=True)
-    # Clear the directory before downloading
+    # Clear the ledger directory before downloading
     csv_files = glob(os.path.join(ledger_dir, '*.csv'))
     for csv_file in csv_files:
         os.remove(csv_file)
@@ -72,6 +107,10 @@ def download_ledgers(game_ids, ledger_dir):
             return False
         # Sleep a few secs for each download
         time.sleep(3)
+
+    # Combine and save the downloaded ledgers
+    combine_and_save_ledgers(ledger_dir, OUTPUT_DIR)
+
     return True
 
 def read_cashouts(path, read_all_csv=True):
@@ -116,11 +155,11 @@ def read_cashouts(path, read_all_csv=True):
                     cashout = int(mapped_row['net'].replace('.', ''))
                     # Lookup PN/ClubGG Alias to get the correct Venmo information. Using lower case to lookup.
                     player_nickname = mapped_row['player_nickname'].lower()
-                    if player_nickname in venmo_mapping_lower:
-                        player_id = venmo_mapping_lower[player_nickname]
+                    if player_nickname == "" or player_nickname not in venmo_mapping_lower:
+                        print(f"\nError: Player with nickname '{player_nickname}' not found in Payment mapping or nickname is empty.\n")
+                        sys.exit(1)  # Terminate program
                     else:
-                        player_id = "Unknown Player"
-                        print(f"Error: Player with nickname '{player_nickname}' not found in Payment mapping.")
+                        player_id = venmo_mapping_lower[player_nickname]
                 except ValueError:
                     continue
                 players[player_id] += cashout
@@ -140,13 +179,7 @@ def edge_weight():
     '''
         Generate a weight for a payment graph edge.
     '''
-    # return random.randint(-1_000_000_000, 1_000_000_000)
-
-    '''
-        Used fixed weight = 1 for each edge, so that it treats all transactions equally and focuses on
-        minimizing the number of transactions to settle the graph. 
-    '''
-    return 1
+    return random.randint(-1_000_000_000, 1_000_000_000)
 
 
 def find_settlement_or(cashouts, _):
@@ -229,8 +262,8 @@ def find_best_settlement(settlement_finder, cashouts, num_trials):
     return best_settlement
 
 
-def print_amount(num):
-    '''Prints a dollar amount.'''
+def get_printable_dollar_amount(num):
+    '''Gets a printable_dollar amount.'''
     quot, rem = divmod(num, 100)
     return f'${quot}.{rem:02}'
 
@@ -240,19 +273,41 @@ def href(name):
     return '<a href="https://venmo.com/u/' + name[1:] + '">' + name + '</a>'
 
 
-def generate_settlement_html(settlement, players):
-    """Generates HTML string for settlement."""
-    lines = ['<pre>']
+def get_venmo_profile_link(username):
+    '''Gets a hyperlink to a Venmo profile. Username starts with @'''
+    return '<a href="https://venmo.com/u/' + username[1:] + '">' + username + '</a>'
+
+def get_venmo_amount_only_link(username, amount, description=None):
+    '''Gets a hyperlink to a Venmo request. Username starts with @'''
+    quot, rem = divmod(amount, 100)
+    note = ''
+    if description:
+        note = '&note=' + description
+    return f'<a href="https://venmo.com/?txn=charge&audience=private&recipients={username[1:]}&amount={quot}.{rem:02}{note}">' + get_printable_dollar_amount(amount) + '<a>'
+
+# felipeal: merge both
+def get_venmo_amount_and_username_link(username, amount, description=None):
+    '''Gets a hyperlink to a Venmo request. Username starts with @'''
+    quot, rem = divmod(amount, 100)
+    note = ''
+    if description:
+        note = '&note=' + description
+    printable_amount = get_printable_dollar_amount(amount);
+    return f'{printable_amount} <a href="https://venmo.com/?txn=charge&audience=private&recipients={username[1:]}&amount={quot}.{rem:02}{note}">{username}<a>'
+
+def generate_settlement_html(settlement, players, description=None):
+    '''Returns a settlement as a HTML string.'''
+    result = '<pre>'
     for player_id in sorted(settlement, key=lambda player_id: players[player_id][0].lower()):
         name, cashout = players[player_id]
-        lines.append(f'{href(name)} requests {print_amount(cashout)} from:')
+        result += f'\n{get_venmo_profile_link(name)} requests {get_printable_dollar_amount(cashout)} from:'
         for payer in sorted(settlement[player_id], key=lambda p: (-p[1], players[p[0]][0].lower())):
-            lines.append(f'\t{print_amount(payer[1]):>8} {href(players[payer[0]][0])}')
-        lines.append('')
-    lines.append('</pre>')
-    result = '\n'.join(lines)
-    print(result)
-
+            amount = payer[1]
+            payer_username = players[payer[0]][0]
+            # 1 link with amount and username
+            result += f'\n\t{get_venmo_amount_and_username_link(payer_username, amount, description)}'
+        result += '\n'
+    result += '</pre>'
     return result
 
 
@@ -268,7 +323,9 @@ def main():
                                  help="Path to the CSV file or directory containing manually downloaded ledger CSV files.")
 
     # This argument remains outside the exclusive group as it does not conflict with the others
+    parser.add_argument("--description", type=str, default=None, help="Description for the payment.")
     parser.add_argument("--num_trials", type=int, default=1_001, help="Number of trials for the settlement.")
+
 
     # Parse the arguments
     args = parser.parse_args()
@@ -298,9 +355,14 @@ def main():
     player_cashouts = read_cashouts(path=ledgers_path, read_all_csv=True)
     cashouts = [pc[1] for pc in player_cashouts]
 
+    # New validation check for sum in player_cashouts
+    if sum(cashouts) != 0:
+        print(f"Error: The total sum of cashouts is {sum(cashouts)}, but it should be 0.")
+        return
+
     settlement = find_best_settlement(settlement_finder, cashouts, args.num_trials)
 
-    settlement_html = generate_settlement_html(settlement, player_cashouts)
+    settlement_html = generate_settlement_html(settlement, player_cashouts, args.description)
     with open(OUTPUT_SETTLEMENT_FILE, 'w') as file:
             file.write(settlement_html)
     print(f"\nSettlement Completed! Output is ready in {OUTPUT_SETTLEMENT_FILE}\n")
