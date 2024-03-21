@@ -284,7 +284,6 @@ def get_venmo_amount_only_link(username, amount, description=None):
         note = '&note=' + description
     return f'<a href="https://venmo.com/?txn=charge&audience=private&recipients={username[1:]}&amount={quot}.{rem:02}{note}">' + get_printable_dollar_amount(amount) + '<a>'
 
-# felipeal: merge both
 def get_venmo_amount_and_username_link(username, amount, description=None):
     '''Gets a hyperlink to a Venmo request. Username starts with @'''
     quot, rem = divmod(amount, 100)
