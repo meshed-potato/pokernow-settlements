@@ -21,6 +21,7 @@ import random
 import requests
 import sys
 import time
+import warnings
 from glob import glob
 
 TMP_LEDGERS_DIR = "./data/tmp_ledgers/"
@@ -28,13 +29,15 @@ TMP_LEDGERS_DIR = "./data/tmp_ledgers/"
 INPUT_PAYMENT_INFO_FILE = "./payment_info.csv"
 
 OUTPUT_DIR = "./output/"
-OUTPUT_SETTLEMENT_FILE = f"{OUTPUT_DIR}settlement.html"
+OUTPUT_SETTLEMENT_FILE_FORMAT = "./output/settlement{}.html"
 
 POKERNOW_NICKNAME_COL = 'PN/ClubGG Alias'
 PAYMENT_COL = 'Venmo / other'
 
 random.seed(123)
 
+# Ignore all warnings
+warnings.filterwarnings("ignore")
 
 def combine_and_save_ledgers(source_dir, output_dir):
     """
@@ -295,7 +298,8 @@ def get_venmo_amount_and_username_link(username, amount, description=None):
 
 def generate_settlement_html(settlement, players, description=None):
     '''Returns a settlement as a HTML string.'''
-    result = '<pre>'
+    result = f'<h4> Results {description}:</h4>\n' if description else '<h4> Results :</h4>\n'
+    result += '<pre>'
     for player_id in sorted(settlement, key=lambda player_id: players[player_id][0].lower()):
         name, cashout = players[player_id]
         result += f'\n{get_venmo_profile_link(name)} requests {get_printable_dollar_amount(cashout)} from:'
@@ -361,9 +365,13 @@ def main():
     settlement = find_best_settlement(settlement_finder, cashouts, args.num_trials)
 
     settlement_html = generate_settlement_html(settlement, player_cashouts, args.description)
-    with open(OUTPUT_SETTLEMENT_FILE, 'w') as file:
+    if args.description:
+        output_settlement_file = OUTPUT_SETTLEMENT_FILE_FORMAT.format("_" + args.description)
+    else:
+        output_settlement_file = OUTPUT_SETTLEMENT_FILE_FORMAT.format("")
+    with open(output_settlement_file, 'w') as file:
             file.write(settlement_html)
-    print(f"\nSettlement Completed! Output is ready in {OUTPUT_SETTLEMENT_FILE}\n")
+    print(f"\nSettlement Completed! Output is ready in {output_settlement_file}\n")
 
 if __name__ == '__main__':
     main()
